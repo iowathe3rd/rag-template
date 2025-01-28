@@ -1,10 +1,14 @@
 # app/models/schemas.py
 from pydantic import BaseModel
+from typing import List, Optional
 
 class QuestionRequest(BaseModel):
     question: str
-    max_tokens: int = 512
 
 class AnswerResponse(BaseModel):
     answer: str
-    sources: list[str]
+    sources: List[str]
+
+class IngestResponse(BaseModel):
+    success: bool
+    source: str

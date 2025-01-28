@@ -1,66 +1,110 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from langchain import hub
+from langchain_chroma import Chroma
+from langchain_core.runnables import (
+    RunnablePassthrough,
+    RunnableParallel,
+    Runnable,
+)
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import BaseMessage
+from langchain_core.prompts import ChatPromptTemplate
 from app.config import settings
-import torch
 import logging
+import litellm
+from typing import Any, Dict, List, Optional, Union
 
+# Initialize logger
 logger = logging.getLogger(__name__)
 
+
 class RetrievalService:
-    def __init__(self, vector_store):
+    def __init__(self, vector_store: Chroma):
+        self._validate_vector_store(vector_store)
         self.device = settings.device
-        self.model, self.tokenizer = self._load_model()
+        self.model = settings.model_name
         self.vector_store = vector_store
-        self.retriever = self.vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": 5}
-        )
-        self.prompt = hub.pull("rlm/rag-prompt")
+        self.retriever = self._setup_retriever()
+        self.prompt: ChatPromptTemplate = hub.pull("rlm/rag-prompt")
+        self.rag_chain: Runnable
         self.setup_chain()
 
-    def _load_model(self):
-        model = AutoModelForCausalLM.from_pretrained(
-            settings.model_name,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            device_map="auto"
+    @staticmethod
+    def _validate_vector_store(vector_store: Chroma) -> None:
+        if not vector_store._collection.count():
+            logger.warning("Vector store is empty")
+
+    def _setup_retriever(self):
+        return self.vector_store.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={
+                "k": settings.similarity_top_k,
+                "score_threshold": settings.similarity_score_threshold
+            }
         )
-        tokenizer = AutoTokenizer.from_pretrained(settings.model_name)
-        return model, tokenizer
 
-    def setup_chain(self):
-        def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
-
+    def setup_chain(self) -> None:
+        """Initialize RAG processing chain."""
         self.rag_chain = (
-            {"context": self.retriever | format_docs, "question": RunnablePassthrough()}
+            RunnableParallel(
+                {
+                    "context": self.retriever, 
+                    "question": RunnablePassthrough()
+                }
+            )
             | self.prompt
+            | (lambda x: x.content if hasattr(x, 'content') else str(x))  # Extract content from prompt
             | self._generate_answer
+            | StrOutputParser()
         )
 
-    async def get_answer(self, question: str):
+    async def get_answer(self, question: str) -> Dict[str, Any]:
+        """Get answer and sources for the given question."""
+        if not question.strip():
+            raise ValueError("Empty question provided")
+        
         try:
             answer = await self.rag_chain.ainvoke(question)
             sources = await self._get_sources(question)
             return {
                 "answer": answer,
-                "sources": sources
+                "sources": sources,
+                "metadata": {
+                    "model": settings.model_name,
+                    "source_count": len(sources)
+                }
             }
         except Exception as e:
-            logger.error(f"Retrieval error: {str(e)}")
+            logger.error(f"Retrieval pipeline failed: {str(e)}")
             raise
 
-    async def _generate_answer(self, prompt: str):
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        outputs = self.model.generate(
-            inputs.input_ids,
-            max_new_tokens=512,
-            temperature=0.7,
-            do_sample=True
-        )
-        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+    async def _generate_answer(self, prompt: Union[str, BaseMessage]) -> str:
+        """Generate answer using LLM."""
+        try:
+            # Convert prompt to string if it's a BaseMessage
+            if isinstance(prompt, BaseMessage):
+                prompt_text = prompt.content
+            else:
+                prompt_text = str(prompt)
 
-    async def _get_sources(self, question: str):
-        docs = await self.retriever.ainvoke(question)
-        return list(set(doc.metadata.get("source", "") for doc in docs))
+            response = await litellm.acompletion(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt_text}],
+                max_tokens=settings.max_tokens,
+                temperature=settings.temperature,
+                top_p=settings.top_p
+            )
+            return response['choices'][0]['message']['content']
+        except Exception as e:
+            logger.error(f"Generation error: {str(e)}, prompt: {prompt}")
+            raise
+
+    async def _get_sources(self, question: str) -> List[str]:
+        """Get list of unique sources for the answer."""
+        try:
+            docs = await self.retriever.invoke(question)
+            return list(
+                {doc.metadata.get("source", "") for doc in docs if hasattr(doc, "metadata")}
+            )
+        except Exception as e:
+            logger.error(f"Source retrieval error: {str(e)}")
+            return []

@@ -5,7 +5,9 @@ langchain-core
 langchain-community
 langchain-openai
 langchain-chroma
-transformers
-torch
-sentence-transformers
 python-dotenv
+litellm
+chromadb
+sentence_transformers
+ollama
+python-multipart

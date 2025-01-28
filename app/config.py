@@ -1,13 +1,41 @@
+import chromadb
 from pydantic_settings import BaseSettings
+import chromadb.utils.embedding_functions as embedding_functions
+from typing import Optional, List
 
 class Settings(BaseSettings):
-    model_name: str = "deepseek-ai/deepseek-v3"  # Или другая open-source модель
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Model settings
+    model_name: str = "ollama/deepseek-r1:1.5b"
+    embedding_model: str = "snowflake-arctic-embed:33m"
+    
+    # Database settings
     chroma_db_path: str = "./chroma_db"
+    chroma_collection_name: str = "documents"
+    
+    # Text splitting settings
     chunk_size: int = 1000
     chunk_overlap: int = 200
-    device: str = "cpu"  # Используйте "cpu", если нет GPU
-    api_key: str
+    
+    # Hardware settings
+    device: str = "cpu"
+    
+    # Retrieval settings
+    similarity_top_k: int = 5
+    similarity_score_threshold: Optional[float] = 0.3  # Lowered threshold
+    
+    # Ingestion settings
+    allowed_extensions: List[str] = ["pdf", "txt"]
+    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    temp_file_path: str = "./temp"
+    
+    # Generation settings
+    max_tokens: int = 512
+    temperature: float = 0.7
+    top_p: float = 1.0
+
+    @property
+    def is_valid_chunk_config(self) -> bool:
+        return 0 < self.chunk_overlap < self.chunk_size
 
     class Config:
         env_file = ".env"

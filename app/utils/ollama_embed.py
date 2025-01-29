@@ -10,9 +10,8 @@ logger = logging.getLogger(__name__)
 
 class OllamaEmbedding(EmbeddingFunction):
     def __init__(self):
-        self.client = ollama.Client()
         self.model_name = settings.embedding_model
-        
+        self.client = ollama.Client()
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def _get_embedding(self, text: str) -> List[float]:
         """Get embedding for a single text."""
@@ -22,8 +21,8 @@ class OllamaEmbedding(EmbeddingFunction):
                 raise ValueError("No embedding in response")
             return self._normalize_embedding(response['embedding'])
         except Exception as e:
-            logger.error(f"Embedding generation failed: {str(e)}")
-            raise
+            logger.error(f"Unexpected error in embedding generation: {str(e)}")
+            return []
 
     def _normalize_embedding(self, embedding: List[float]) -> List[float]:
         """Normalize embedding vector to unit length."""

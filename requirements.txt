@@ -13,3 +13,5 @@ ollama
 python-multipart
 numpy
 beautifulsoup4
+pypdf
+langchain-together

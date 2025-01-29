@@ -5,18 +5,28 @@ from app.services.retrieval import RetrievalService
 from app.config import settings
 from fastapi import Depends, HTTPException, status
 from langchain_chroma import Chroma
+from langchain_together.embeddings import TogetherEmbeddings
 from app.utils.ollama_embed import OllamaEmbedding
 import chromadb
+
+def get_embedding_function():
+    """Create and return an embedding function instance."""
+    return TogetherEmbeddings(
+        api_key=settings.togetherai_api_key,
+        model=settings.embedding_model,
+    )
+    
 
 def get_vector_store():
     """Create and return a Chroma vector store instance."""
     try:
-        embedding_function = OllamaEmbedding()
+        embedding_function = get_embedding_function()
         client = chromadb.PersistentClient(path=settings.chroma_db_path)
         return Chroma(
             client=client,
             collection_name=settings.chroma_collection_name,
             embedding_function=embedding_function
+            
         )
     except Exception as e:
         Logger.error(f"Failed to initialize vector store: {str(e)}")

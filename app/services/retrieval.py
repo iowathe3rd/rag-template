@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from langchain import hub
 from langchain_chroma import Chroma
 from langchain_core.runnables import (
@@ -12,53 +13,84 @@ from app.config import settings
 import logging
 import litellm
 from typing import Any, Dict, List, Optional, Union
+from langchain_core.vectorstores import VectorStoreRetriever
 
-# Initialize logger
 logger = logging.getLogger(__name__)
 
+@dataclass
+class RetrievalResponse:
+    """Data class for storing retrieval results."""
+    answer: str
+    sources: List[str]
+    metadata: Dict[str, Any]
 
 class RetrievalService:
-    def __init__(self, vector_store: Chroma):
+    """Service for retrieving and generating answers using RAG pattern."""
+
+    def __init__(self, vector_store: Chroma) -> None:
+        """
+        Initialize the retrieval service.
+        
+        Args:
+            vector_store: Initialized Chroma vector store
+        """
         self._validate_vector_store(vector_store)
+        self.vector_store = vector_store
         self.device = settings.device
         self.model = settings.model_name
-        self.vector_store = vector_store
         self.retriever = self._setup_retriever()
         self.prompt: ChatPromptTemplate = hub.pull("rlm/rag-prompt")
-        self.rag_chain: Runnable
         self.setup_chain()
 
     @staticmethod
     def _validate_vector_store(vector_store: Chroma) -> None:
+        """Validate that vector store contains documents."""
         if not vector_store._collection.count():
             logger.warning("Vector store is empty")
 
-    def _setup_retriever(self):
-        """Configure the retriever with proper settings."""
+    def _setup_retriever(self) -> VectorStoreRetriever:
+        """
+        Configure the retriever with search settings.
+        
+        Returns:
+            Configured retriever instance
+        """
         return self.vector_store.as_retriever(
-            search_type="similarity",  # Changed from similarity_score_threshold
-            search_kwargs={
-                "k": settings.similarity_top_k,
-            }
+            search_type="similarity",
+            search_kwargs={"k": settings.similarity_top_k}
         )
 
     def setup_chain(self) -> None:
-        """Initialize RAG processing chain."""
+        """Initialize the RAG processing chain."""
         self.rag_chain = (
-            RunnableParallel(
-                {
-                    "context": self.retriever, 
-                    "question": RunnablePassthrough()
-                }
-            )
+            RunnableParallel({
+                "context": self.retriever,
+                "question": RunnablePassthrough()
+            })
             | self.prompt
-            | (lambda x: x.content if hasattr(x, 'content') else str(x))  # Extract content from prompt
+            | self._extract_content
             | self._generate_answer
             | StrOutputParser()
         )
 
-    async def get_answer(self, question: str) -> Dict[str, Any]:
-        """Get answer and sources for the given question."""
+    @staticmethod
+    def _extract_content(x: Any) -> str:
+        """Extract content from prompt response."""
+        return x.content if hasattr(x, 'content') else str(x)
+
+    async def get_answer(self, question: str) -> RetrievalResponse:
+        """
+        Get answer and sources for the given question.
+        
+        Args:
+            question: User question string
+            
+        Returns:
+            RetrievalResponse containing answer, sources and metadata
+            
+        Raises:
+            ValueError: If empty question provided
+        """
         if not question.strip():
             raise ValueError("Empty question provided")
         
@@ -69,45 +101,56 @@ class RetrievalService:
             if not sources:
                 logger.warning("No sources found for the answer")
             
-            return {
-                "answer": answer or "I couldn't find relevant information to answer your question.",
-                "sources": sources,
-                "metadata": {
+            return RetrievalResponse(
+                answer=answer or "I couldn't find relevant information to answer your question.",
+                sources=sources,
+                metadata={
                     "model": settings.model_name,
                     "source_count": len(sources)
                 }
-            }
+            )
         except Exception as e:
             logger.error(f"Retrieval pipeline failed: {str(e)}")
             raise
 
     async def _generate_answer(self, prompt: Union[str, BaseMessage]) -> str:
-        """Generate answer using LLM."""
+        """
+        Generate answer using LLM.
+        
+        Args:
+            prompt: Input prompt for the LLM
+            
+        Returns:
+            Generated answer string
+        """
         try:
-            # Convert prompt to string if it's a BaseMessage
-            if isinstance(prompt, BaseMessage):
-                prompt_text = prompt.content
-            else:
-                prompt_text = str(prompt)
-
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt_text}],
-                max_tokens=settings.max_tokens,
-                temperature=settings.temperature,
-                top_p=settings.top_p
-            )
+            prompt_text = prompt.content if isinstance(prompt, BaseMessage) else str(prompt)
+            response = await self._call_llm(prompt_text)
             return response['choices'][0]['message']['content']
         except Exception as e:
             logger.error(f"Generation error: {str(e)}, prompt: {prompt}")
             raise
 
-    def _normalize_score(self, score: float) -> float:
-        """Normalize negative scores to 0-1 range."""
-        return 1 / (1 + abs(score)) if score < 0 else score
+    async def _call_llm(self, prompt_text: str) -> Dict[str, Any]:
+        """Make the actual LLM API call."""
+        return await litellm.acompletion(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt_text}],
+            max_tokens=settings.max_tokens,
+            temperature=settings.temperature,
+            top_p=settings.top_p
+        )
 
     async def _get_sources(self, question: str) -> List[str]:
-        """Get list of unique sources for the answer."""
+        """
+        Get list of unique sources for the answer.
+        
+        Args:
+            question: User question string
+            
+        Returns:
+            List of unique source strings
+        """
         try:
             docs = self.retriever.get_relevant_documents(question)
             if not docs:

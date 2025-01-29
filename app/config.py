@@ -6,7 +6,7 @@ from typing import Optional, List
 class Settings(BaseSettings):
     # Model settings
     model_name: str = "together_ai/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"
-    embedding_model: str = "snowflake-arctic-embed:33m"
+    embedding_model: str = "togethercomputer/m2-bert-80M-8k-retrieval"
     
     # Database settings
     chroma_db_path: str = "/app/data/chroma_db"

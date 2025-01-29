@@ -18,8 +18,8 @@ async def ask_question(
 ):
     response = await retrieval_service.get_answer(request.question)
     return AnswerResponse(
-        answer=response["answer"],
-        sources=response["sources"]
+        answer=response.answer,
+        sources=response.sources
     )
 
 @router.post("/ingest/url", response_model=IngestResponse)
@@ -41,8 +41,8 @@ async def ingest_pdf(
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """Ingest content from a PDF file."""
-    os.makedirs(settings.temp_file_path, exist_ok=True)
-    file_path = os.path.join(settings.temp_file_path, file.filename)
+    temp_dir = "/tmp"
+    file_path = os.path.join(temp_dir, file.filename)
     try:
         with open(file_path, "wb") as buffer:
             content = await file.read()

@@ -5,7 +5,7 @@ from typing import Optional, List
 
 class Settings(BaseSettings):
     # Model settings
-    model_name: str = "ollama/deepseek-r1:1.5b"
+    model_name: str = "together_ai/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"
     embedding_model: str = "snowflake-arctic-embed:33m"
     
     # Database settings
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = "https://api.smith.langchain.com"
     langsmith_api_key: str = ""
     langsmith_project: str = "rag-assistant"
+    
+    #together ai settings
+    togetherai_api_key: str = ""
     
     # Text splitting settings
     chunk_size: int = 1000

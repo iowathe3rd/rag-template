@@ -5,6 +5,8 @@ from app.services.retrieval import RetrievalService
 from app.services.indexing import IndexingService
 from typing import List
 import logging
+import os
+from app.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -39,17 +41,22 @@ async def ingest_pdf(
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """Ingest content from a PDF file."""
-    file_path = f"temp/{file.filename}"
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-    
-    success = await indexing_service.index_content(
-        source=file_path,
-        source_type="pdf",
-        metadata={"source_type": "pdf", "filename": file.filename}
-    )
-    return IngestResponse(success=success, source=file.filename)
+    os.makedirs(settings.temp_file_path, exist_ok=True)
+    file_path = os.path.join(settings.temp_file_path, file.filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        success = await indexing_service.index_content(
+            source=file_path,
+            source_type="pdf",
+            metadata={"source_type": "pdf", "filename": file.filename}
+        )
+        return IngestResponse(success=success, source=file.filename)
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
 @router.post("/ingest/text", response_model=IngestResponse)
 async def ingest_text(

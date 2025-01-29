@@ -33,7 +33,10 @@ class IndexingService:
                 return False
 
             loader = self._get_loader(source, source_type)
-            documents: list[Document] = await self._load_and_validate_documents(loader)
+            if source_type == "web":
+                documents = loader.scrape()  # Removed 'await'
+            else:
+                documents: list[Document] = await self._load_and_validate_documents(loader)
             splits = self.text_splitter.split_documents(documents)
             
             # Add document hash to metadata
@@ -73,7 +76,7 @@ class IndexingService:
             logger.error(f"Document loading failed: {str(e)}")
             raise
 
-    def _get_loader(self, source: str, source_type: str) -> Any:
+    def _get_loader(self, source: str, source_type: str) -> WebBaseLoader | PyPDFLoader | TextLoader:
         """Get appropriate loader based on source type."""
         if source_type == "web":
             return WebBaseLoader(source)

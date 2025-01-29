@@ -34,7 +34,8 @@ class IndexingService:
 
             loader = self._get_loader(source, source_type)
             if source_type == "web":
-                documents = loader.scrape()  # Removed 'await'
+                documents_list = loader.scrape()
+                documents = [Document(page_content=str(item)) for item in documents_list]
             else:
                 documents: list[Document] = await self._load_and_validate_documents(loader)
             splits = self.text_splitter.split_documents(documents)

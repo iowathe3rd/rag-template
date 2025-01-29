@@ -9,8 +9,14 @@ class Settings(BaseSettings):
     embedding_model: str = "snowflake-arctic-embed:33m"
     
     # Database settings
-    chroma_db_path: str = "./chroma_db"
+    chroma_db_path: str = "/app/data/chroma_db"
     chroma_collection_name: str = "documents"
+    
+    # LangSmith settings
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str = ""
+    langsmith_project: str = "rag-assistant"
     
     # Text splitting settings
     chunk_size: int = 1000
@@ -27,7 +33,7 @@ class Settings(BaseSettings):
     # Ingestion settings
     allowed_extensions: List[str] = ["pdf", "txt"]
     max_file_size: int = 10 * 1024 * 1024  # 10MB
-    temp_file_path: str = "./temp"
+    temp_file_path: str = "/app/data/temp"
     
     # Generation settings
     max_tokens: int = 512

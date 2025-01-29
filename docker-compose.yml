@@ -8,13 +8,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./app:/app
-      - chroma_data:/app/chroma_db
-      - ./temp:/app/temp
+      - ./app:/app/app:ro
+      - chroma_data:/app/data/chroma_db
+      - temp_data:/app/data/temp
     environment:
       - OLLAMA_HOST=host.docker.internal
       - OLLAMA_PORT=11434
-      - CHROMA_DB_PATH=/app/chroma_db
+      - CHROMA_DB_PATH=/app/data/chroma_db
       - MODEL_NAME=ollama/deepseek-r1:1.5b
       - EMBEDDING_MODEL=snowflake-arctic-embed:33m
     extra_hosts:
@@ -26,10 +26,13 @@ services:
       retries: 3
     networks:
       - rag-network
+    restart: unless-stopped
 
 volumes:
   chroma_data:
     name: rag-chroma-data
+  temp_data:
+    name: rag-temp-data
 
 networks:
   rag-network:

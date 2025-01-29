@@ -5,7 +5,9 @@ from app.config import settings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.utils.ollama_embed import OllamaEmbedding
 from typing import List, Dict, Any
+from langchain_core.documents import Document
 import hashlib
+from app.utils.text_loader import RawTextLoader
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class IndexingService:
                 return False
 
             loader = self._get_loader(source, source_type)
-            documents = await self._load_and_validate_documents(loader)
+            documents: list[Document] = await self._load_and_validate_documents(loader)
             splits = self.text_splitter.split_documents(documents)
             
             # Add document hash to metadata
@@ -56,18 +58,28 @@ class IndexingService:
         # Implement document deduplication logic
         return False  # Placeholder implementation
 
-    async def _load_and_validate_documents(self, loader: Any) -> List[Any]:
-        documents = loader.load()
-        if not documents:
-            raise ValueError("No documents loaded")
-        return documents
+    async def _load_and_validate_documents(self, loader: Any) -> List[Document]:
+        """Load and validate documents from the loader."""
+        try:
+            if isinstance(loader, RawTextLoader):
+                documents = loader.load()
+            else:
+                documents = await loader.aload() if hasattr(loader, 'aload') else loader.load()
+            
+            if not documents:
+                raise ValueError("No documents loaded")
+            return documents
+        except Exception as e:
+            logger.error(f"Document loading failed: {str(e)}")
+            raise
 
-    def _get_loader(self, source: str, source_type: str):
+    def _get_loader(self, source: str, source_type: str) -> Any:
+        """Get appropriate loader based on source type."""
         if source_type == "web":
             return WebBaseLoader(source)
         elif source_type == "pdf":
             return PyPDFLoader(source)
         elif source_type == "text":
-            return TextLoader(source)
+            return RawTextLoader(source)
         else:
             raise ValueError(f"Unsupported source type: {source_type}")

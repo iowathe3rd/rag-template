@@ -4,6 +4,7 @@ import ollama
 import logging
 from typing import List, Union
 from tenacity import retry, stop_after_attempt, wait_exponential
+from numpy import array, linalg
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,18 @@ class OllamaEmbedding(EmbeddingFunction):
             response = self.client.embeddings(model=self.model_name, prompt=text)
             if not response or 'embedding' not in response:
                 raise ValueError("No embedding in response")
-            return response['embedding']
+            return self._normalize_embedding(response['embedding'])
         except Exception as e:
             logger.error(f"Embedding generation failed: {str(e)}")
             raise
+
+    def _normalize_embedding(self, embedding: List[float]) -> List[float]:
+        """Normalize embedding vector to unit length."""
+        arr = array(embedding)
+        norm = linalg.norm(arr)
+        if norm == 0:
+            return embedding
+        return (arr / norm).tolist()
 
     def embed_documents(self, texts: Documents) -> Embeddings:
         """Generate embeddings for documents."""

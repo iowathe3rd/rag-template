@@ -34,11 +34,11 @@ class RetrievalService:
             logger.warning("Vector store is empty")
 
     def _setup_retriever(self):
+        """Configure the retriever with proper settings."""
         return self.vector_store.as_retriever(
-            search_type="similarity_score_threshold",
+            search_type="similarity",  # Changed from similarity_score_threshold
             search_kwargs={
                 "k": settings.similarity_top_k,
-                "score_threshold": settings.similarity_score_threshold
             }
         )
 
@@ -65,8 +65,12 @@ class RetrievalService:
         try:
             answer = await self.rag_chain.ainvoke(question)
             sources = await self._get_sources(question)
+            
+            if not sources:
+                logger.warning("No sources found for the answer")
+            
             return {
-                "answer": answer,
+                "answer": answer or "I couldn't find relevant information to answer your question.",
                 "sources": sources,
                 "metadata": {
                     "model": settings.model_name,
@@ -98,13 +102,23 @@ class RetrievalService:
             logger.error(f"Generation error: {str(e)}, prompt: {prompt}")
             raise
 
+    def _normalize_score(self, score: float) -> float:
+        """Normalize negative scores to 0-1 range."""
+        return 1 / (1 + abs(score)) if score < 0 else score
+
     async def _get_sources(self, question: str) -> List[str]:
         """Get list of unique sources for the answer."""
         try:
-            docs = await self.retriever.invoke(question)
-            return list(
-                {doc.metadata.get("source", "") for doc in docs if hasattr(doc, "metadata")}
-            )
+            docs = self.retriever.get_relevant_documents(question)
+            if not docs:
+                logger.warning("No documents retrieved")
+                return []
+                
+            return list({
+                doc.metadata.get("source", "") 
+                for doc in docs 
+                if hasattr(doc, "metadata")
+            })
         except Exception as e:
             logger.error(f"Source retrieval error: {str(e)}")
             return []

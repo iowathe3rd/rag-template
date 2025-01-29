@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from app.models.schemas import QuestionRequest, AnswerResponse, IngestResponse
 from app.dependencies import get_retrieval_service, get_indexing_service
 from app.services.retrieval import RetrievalService
 from app.services.indexing import IndexingService
 from typing import List
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/ask", response_model=AnswerResponse)
 async def ask_question(
@@ -56,9 +58,20 @@ async def ingest_text(
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """Ingest raw text content."""
-    success = await indexing_service.index_content(
-        source=text,
-        source_type="text",
-        metadata={"source_type": "text", "title": title}
-    )
-    return IngestResponse(success=success, source=title)
+    try:
+        success = await indexing_service.index_content(
+            source=text,
+            source_type="text",
+            metadata={
+                "source_type": "text",
+                "title": title,
+                "source": f"text-{title}"  # Add source identifier
+            }
+        )
+        return IngestResponse(success=success, source=title)
+    except Exception as e:
+        logger.error(f"Text ingestion failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )

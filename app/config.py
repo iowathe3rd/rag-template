@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     device: str = "cpu"
     
     # Retrieval settings
-    similarity_top_k: int = 5
-    similarity_score_threshold: Optional[float] = 0.3  # Lowered threshold
+    similarity_top_k: int = 3
+    similarity_score_threshold: Optional[float] = None  # Remove threshold for now
+    score_normalization: bool = True
     
     # Ingestion settings
     allowed_extensions: List[str] = ["pdf", "txt"]

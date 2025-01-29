@@ -1,4 +1,5 @@
 # app/dependencies.py
+from logging import Logger
 from app.services.indexing import IndexingService
 from app.services.retrieval import RetrievalService
 from app.config import settings
@@ -18,7 +19,7 @@ def get_vector_store():
             embedding_function=embedding_function
         )
     except Exception as e:
-        logger.error(f"Failed to initialize vector store: {str(e)}")
+        Logger.error(f"Failed to initialize vector store: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to initialize vector store"

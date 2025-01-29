@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  rag-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+      - chroma_data:/app/chroma_db
+      - ./temp:/app/temp
+    environment:
+      - OLLAMA_HOST=host.docker.internal
+      - OLLAMA_PORT=11434
+      - CHROMA_DB_PATH=/app/chroma_db
+      - MODEL_NAME=ollama/deepseek-r1:1.5b
+      - EMBEDDING_MODEL=snowflake-arctic-embed:33m
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - rag-network
+
+volumes:
+  chroma_data:
+    name: rag-chroma-data
+
+networks:
+  rag-network:
+    driver: bridge

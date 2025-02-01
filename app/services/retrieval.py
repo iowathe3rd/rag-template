@@ -14,6 +14,9 @@ import logging
 import litellm
 from typing import Any, Dict, List, Optional, Union
 from langchain_core.vectorstores import VectorStoreRetriever
+from sqlalchemy.orm import Session
+from app.models.database import Chat as DBChat
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -78,25 +81,25 @@ class RetrievalService:
         """Extract content from prompt response."""
         return x.content if hasattr(x, 'content') else str(x)
 
-    async def get_answer(self, question: str) -> RetrievalResponse:
+    async def get_answer(self, context: str) -> RetrievalResponse:
         """
-        Get answer and sources for the given question.
+        Get answer and sources for the given context.
         
         Args:
-            question: User question string
+            context: Combined chat history and user question
             
         Returns:
             RetrievalResponse containing answer, sources and metadata
             
         Raises:
-            ValueError: If empty question provided
+            ValueError: If empty context provided
         """
-        if not question.strip():
-            raise ValueError("Empty question provided")
+        if not context.strip():
+            raise ValueError("Empty context provided")
         
         try:
-            answer = await self.rag_chain.ainvoke(question)
-            sources = await self._get_sources(question)
+            answer = await self.rag_chain.ainvoke(context)
+            sources = await self._get_sources(context)
             
             if not sources:
                 logger.warning("No sources found for the answer")
@@ -165,3 +168,17 @@ class RetrievalService:
         except Exception as e:
             logger.error(f"Source retrieval error: {str(e)}")
             return []
+
+    async def save_chat_message(self, agent_id: str, chat_id: str, message: str, db: Session):
+        db_chat = db.query(DBChat).filter(DBChat.id == chat_id, DBChat.agent_id == agent_id).first()
+        if not db_chat:
+            raise ValueError("Chat not found")
+        
+        db_chat.add_message(message)
+        db.commit()
+
+    async def get_chat_history(self, agent_id: str, chat_id: str, db: Session) -> List[str]:
+        db_chat = db.query(DBChat).filter(DBChat.id == chat_id, DBChat.agent_id == agent_id).first()
+        if not db_chat:
+            raise ValueError("Chat not found")
+        return json.loads(db_chat.messages)

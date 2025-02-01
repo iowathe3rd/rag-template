@@ -1,6 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
-from app.routes import rag
+from app.routes import rag, agents
 from app.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="RAG Assistant API")
@@ -16,6 +16,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(rag.router, prefix="/api/v1")
+app.include_router(agents.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():

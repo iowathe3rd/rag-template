@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from app.models.schemas import QuestionRequest, AnswerResponse, IngestResponse
-from app.dependencies import get_retrieval_service, get_indexing_service
+from app.dependencies import get_retrieval_service, get_indexing_service, get_db
 from app.services.retrieval import RetrievalService
 from app.services.indexing import IndexingService
+from sqlalchemy.orm import Session
 from typing import List
 import logging
 import os
@@ -11,12 +12,28 @@ from app.config import settings
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/ask", response_model=AnswerResponse)
+@router.post("/agents/{agent_id}/chats/{chat_id}/ask", response_model=AnswerResponse)
 async def ask_question(
+    agent_id: str,
+    chat_id: str,
     request: QuestionRequest,
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
+    db: Session = Depends(get_db),
 ):
-    response = await retrieval_service.get_answer(request.question)
+    # Retrieve chat history
+    chat_history = await retrieval_service.get_chat_history(agent_id, chat_id, db)
+    
+    # Append the new question to the chat history
+    chat_history.append(request.question)
+    
+    # Generate a context-aware prompt
+    context = "\n".join(chat_history)
+    response = await retrieval_service.get_answer(context)
+    
+    # Save the new question and answer to the chat history
+    await retrieval_service.save_chat_message(agent_id, chat_id, request.question, db)
+    await retrieval_service.save_chat_message(agent_id, chat_id, response.answer, db)
+    
     return AnswerResponse(
         answer=response.answer,
         sources=response.sources

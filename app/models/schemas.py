@@ -12,3 +12,12 @@ class AnswerResponse(BaseModel):
 class IngestResponse(BaseModel):
     success: bool
     source: str
+
+class Agent(BaseModel):
+    id: str
+    knowledge_base_path: str
+
+class Chat(BaseModel):
+    id: str
+    agent_id: str
+    messages: List[str] = []

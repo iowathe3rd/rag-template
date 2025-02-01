@@ -5,7 +5,7 @@ from typing import Optional, List
 
 class Settings(BaseSettings):
     # Model settings
-    model_name: str = "together_ai/meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"
+    model_name: str = "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
     embedding_model: str = "togethercomputer/m2-bert-80M-8k-retrieval"
     
     # Database settings

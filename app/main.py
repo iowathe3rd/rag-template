@@ -1,7 +1,6 @@
 # app/main.py
 from fastapi import FastAPI
 from app.routes import rag, agents
-from app.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="RAG Assistant API")
 

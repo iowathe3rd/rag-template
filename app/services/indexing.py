@@ -55,20 +55,8 @@ class IndexingService(BaseAgentService):
         super().__init__(agent_id, db)
         self.document_processor = DocumentProcessor()
         self.document_loader = DocumentLoader()
-        self.vector_store = self._get_agent_vector_store()
-
-    def _get_agent_vector_store(self) -> Chroma:
-        """Get or create agent-specific vector store."""
-        agent = self.db.query(Agent).filter(Agent.id == self.agent_id).first()
-        if not agent:
-            raise ValueError(f"Agent {self.agent_id} not found")
-
-        # Create or get agent-specific Chroma collection
-        return Chroma(
-            collection_name=str(self.agent_id),  # Используем UUID агента
-            embedding_function=get_embedding_function(),
-        )
-
+        self.vector_store = self._initialize_vector_store()
+    
     @staticmethod
     def _compute_document_hash(source: str) -> str:
         """Generate unique fingerprint for document content.

@@ -7,17 +7,31 @@ import logging
 import os
 from app.config import settings
 
+# Initialize router and logger
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Question & Answer Endpoint
 @router.post("/agents/{agent_id}/chats/{chat_id}/ask", response_model=AnswerResponse)
 async def ask_question(
-    agent_id: str,
     chat_id: str,
     request: QuestionRequest,
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
 ):
-    """Ask a question within a chat context."""
+    """
+    Process a question within a specific chat context.
+    
+    Args:
+        chat_id: Unique identifier for the chat session
+        request: Contains the question text and any additional parameters
+        retrieval_service: Service for retrieving and generating answers
+        
+    Returns:
+        AnswerResponse containing the generated answer, sources, and metadata
+        
+    Raises:
+        HTTPException: If answer generation fails
+    """
     response = await retrieval_service.get_answer(
         question=request.question,
         chat_id=chat_id
@@ -29,13 +43,27 @@ async def ask_question(
         metadata=response.metadata
     )
 
+# URL Content Ingestion Endpoint
 @router.post("/agents/{agent_id}/ingest/url", response_model=IngestResponse)
 async def ingest_url(
     agent_id: str,
     url: str = Form(...),
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
-    """Ingest content from URL into agent-specific knowledge base."""
+    """
+    Ingest content from a URL into an agent's knowledge base.
+    
+    Args:
+        agent_id: Unique identifier for the agent
+        url: Web URL to scrape and ingest
+        indexing_service: Service for content indexing operations
+        
+    Returns:
+        IngestResponse with success status and document tracking info
+        
+    Raises:
+        HTTPException: If URL ingestion fails
+    """
     try:
         metadata = await indexing_service.index_content(
             source=url,
@@ -54,6 +82,7 @@ async def ingest_url(
             detail=str(e)
         )
 
+# PDF Document Ingestion Endpoint
 @router.post("/agents/{agent_id}/ingest/pdf", response_model=IngestResponse)
 async def ingest_pdf(
     agent_id: str,
@@ -61,27 +90,38 @@ async def ingest_pdf(
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """
-    Ingest PDF content into agent-specific knowledge base.
+    Ingest a PDF document into an agent's knowledge base.
     
     Args:
-        agent_id: The ID of the agent to associate the content with
-        file: The PDF file to ingest
+        agent_id: Unique identifier for the agent
+        file: Uploaded PDF file
+        indexing_service: Service for content indexing operations
+        
+    Returns:
+        IngestResponse with success status and document tracking info
+        
+    Raises:
+        HTTPException: If file is not PDF or ingestion fails
     """
+    # Validate file extension
     if not file.filename.endswith('.pdf'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File must be a PDF"
         )
-        
+    
+    # Setup temporary file path    
     temp_dir = settings.temp_file_path
     file_path = os.path.join(temp_dir, file.filename)
     
     try:
+        # Ensure temp directory exists and save file
         os.makedirs(temp_dir, exist_ok=True)
         with open(file_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
         
+        # Process and index the PDF
         metadata = await indexing_service.index_content(
             source=file_path,
             source_type="pdf",
@@ -103,9 +143,11 @@ async def ingest_pdf(
             detail=str(e)
         )
     finally:
+        # Cleanup temporary file
         if os.path.exists(file_path):
             os.remove(file_path)
 
+# Raw Text Ingestion Endpoint
 @router.post("/agents/{agent_id}/ingest/text", response_model=IngestResponse)
 async def ingest_text(
     agent_id: str,
@@ -114,12 +156,19 @@ async def ingest_text(
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """
-    Ingest raw text content into agent-specific knowledge base.
+    Ingest raw text content into an agent's knowledge base.
     
     Args:
-        agent_id: The ID of the agent to associate the content with
-        text: The text content to ingest
-        title: The title of the text content
+        agent_id: Unique identifier for the agent
+        text: Raw text content to ingest
+        title: Title/identifier for the text content
+        indexing_service: Service for content indexing operations
+        
+    Returns:
+        IngestResponse with success status and document tracking info
+        
+    Raises:
+        HTTPException: If text ingestion fails
     """
     try:
         metadata = await indexing_service.index_content(

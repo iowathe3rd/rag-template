@@ -1,0 +1,117 @@
+import datetime
+from typing import Any, Dict, List, Optional
+from fastapi import logger
+from langchain import hub
+from langchain_chroma import Chroma
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.vectorstores import VectorStoreRetriever
+from litellm import LiteLLM
+
+from app.services.retrieval import RetrievalResponse
+from app.config import settings
+
+class RAGChainManager:
+    """Manages RAG (Retrieval Augmented Generation) chain operations."""
+    
+    def __init__(
+        self, 
+        vector_store: Chroma,
+        model_name: str,
+        api_key: str,
+        retrieval_config: Dict[str, Any]
+    ):
+        """
+        Initialize RAG chain manager.
+        
+        Args:
+            vector_store: Chroma vector store instance
+            model_name: Name of the LLM model to use
+            retrieval_config: Configuration for retrieval operations
+        """
+        self.vector_store = vector_store
+        self.model_name = model_name
+        self.retrieval_config = retrieval_config
+        self.retriever = self._setup_retriever()
+        self.llm = self._setup_llm()
+        self.prompt = hub.pull("rlm/rag-prompt")
+        self.chain = self._setup_chain()
+
+    def _setup_llm(self) -> LiteLLM:
+        """Initialize the LLM with configuration."""
+        return LiteLLM(
+            model_name=settings.model_name,
+            api_key=settings.togetherai_api_key,
+            temperature=settings.temperature,
+            max_tokens=settings.max_tokens,
+            top_p=settings.top_p
+        )
+
+    def _setup_retriever(self) -> VectorStoreRetriever:
+        """Initialize the retriever with search configuration."""
+        return self.vector_store.as_retriever(
+            search_type="similarity",
+            search_kwargs=self.retrieval_config.get("search_kwargs", {
+                "k": settings.similarity_top_k,
+                "score_threshold": settings.similarity_score_threshold
+            })
+        )
+
+    def _setup_chain(self):
+        """Initialize the RAG chain with parallel retrieval and processing."""
+        return (
+            RunnableParallel({
+                "context": self.retriever,
+                "question": RunnablePassthrough()
+            })
+            | self.prompt
+            | self.llm
+            | StrOutputParser()
+        )
+
+    async def _get_sources(self, question: str) -> List[str]:
+        """Retrieve source documents for a given question."""
+        docs = await self.retriever.aget_relevant_documents(question)
+        return [doc.page_content for doc in docs]
+
+    def _calculate_confidence(self, answer: str, sources: List[str]) -> float:
+        """Calculate confidence score for the generated answer."""
+        # Implement confidence calculation logic
+        # This could be based on:
+        # - Semantic similarity between answer and sources
+        # - Number of relevant sources found
+        # - LLM's reported confidence
+        return 0.85  # Placeholder implementation
+
+    def _get_metadata(self) -> Dict[str, Any]:
+        """Get metadata about the RAG operation."""
+        return {
+            "model": self.model_name,
+            "retrieval_config": self.retrieval_config,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    async def generate_response(self, question: str) -> RetrievalResponse:
+        """
+        Generate a response using the RAG chain.
+        
+        Args:
+            question: User's question
+            
+        Returns:
+            RetrievalResponse containing answer, sources, and metadata
+        """
+        try:
+            answer = await self.chain.ainvoke(question)
+            sources = await self._get_sources(question)
+            
+            return RetrievalResponse(
+                answer=answer,
+                sources=sources,
+                metadata=self._get_metadata(),
+                confidence_score=self._calculate_confidence(answer, sources)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating RAG response: {str(e)}")
+            raise ValueError(f"Failed to generate response: {str(e)}")

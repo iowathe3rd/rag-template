@@ -1,9 +1,13 @@
+from app.dependencies import get_embedding_function
 from app.services.base import BaseAgentService
 from app.models.chat import ChatManager
 from app.models.rag import RAGChainManager
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
+from langchain.vectorstores import Chroma
+from langchain.vectorstores.base import VectorStore
+from app.models.database import chroma_manager
 
 @dataclass
 class RetrievalResponse:
@@ -39,8 +43,6 @@ class RetrievalService(BaseAgentService):
         self.chat_manager = ChatManager(db)
         self.rag_chain = RAGChainManager(
             vector_store=self.vector_store,
-            model_name=self.agent.llm_config["model_name"],
-            retrieval_config=self.agent.rag_config
         )
 
     async def get_answer(self, question: str, chat_id: Optional[str] = None) -> RetrievalResponse:
@@ -86,3 +88,11 @@ class RetrievalService(BaseAgentService):
             chat_id
         )
         return f"{chat_history}\n{question}"
+
+    def _init_vector_store(self) -> VectorStore:
+        """Инициализация хранилища векторов для конкретного агента"""
+        return Chroma(
+            client=chroma_manager.client,
+            collection_name=str(self.agent_id),  # Используем UUID агента
+            embedding_function=get_embedding_function(),
+        )

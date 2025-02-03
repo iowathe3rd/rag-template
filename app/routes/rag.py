@@ -20,6 +20,21 @@ async def ask_question(
     retrieval_service: RetrievalService = Depends(get_retrieval_service),
     db: Session = Depends(get_db),
 ):
+    """
+    Ask a question within a chat context.
+
+    This endpoint allows you to ask a question to a specific agent within a chat session.
+    The chat history is used to provide context for the question, and the response is
+    generated using the RAG pattern.
+
+    Args:
+        agent_id: The ID of the agent.
+        chat_id: The ID of the chat session.
+        request: The question request containing the question text.
+
+    Returns:
+        An AnswerResponse containing the answer and sources.
+    """
     # Retrieve chat history
     chat_history = await retrieval_service.get_chat_history(agent_id, chat_id, db)
     
@@ -44,7 +59,18 @@ async def ingest_url(
     url: str = Form(...),
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
-    """Ingest content from a URL."""
+    """
+    Ingest content from a URL.
+
+    This endpoint allows you to ingest content from a specified URL into the system's
+    knowledge base.
+
+    Args:
+        url: The URL of the content to ingest.
+
+    Returns:
+        An IngestResponse indicating the success of the operation and the source URL.
+    """
     success = await indexing_service.index_content(
         source=url,
         source_type="web",
@@ -57,7 +83,18 @@ async def ingest_pdf(
     file: UploadFile = File(...),
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
-    """Ingest content from a PDF file."""
+    """
+    Ingest content from a PDF file.
+
+    This endpoint allows you to upload and ingest content from a PDF file into the
+    system's knowledge base.
+
+    Args:
+        file: The PDF file to ingest.
+
+    Returns:
+        An IngestResponse indicating the success of the operation and the source filename.
+    """
     temp_dir = "/tmp"
     file_path = os.path.join(temp_dir, file.filename)
     try:
@@ -81,7 +118,18 @@ async def ingest_text(
     title: str = Form(...),
     indexing_service: IndexingService = Depends(get_indexing_service),
 ):
-    """Ingest raw text content."""
+    """
+    Ingest raw text content.
+
+    This endpoint allows you to ingest raw text content into the system's knowledge base.
+
+    Args:
+        text: The text content to ingest.
+        title: The title of the text content.
+
+    Returns:
+        An IngestResponse indicating the success of the operation and the source title.
+    """
     try:
         success = await indexing_service.index_content(
             source=text,

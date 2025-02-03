@@ -1,54 +1,61 @@
-# app/dependencies.py
-from logging import Logger
+from logging import getLogger
 from app.services.indexing import IndexingService
 from app.services.retrieval import RetrievalService
 from app.config import settings
 from fastapi import Depends, HTTPException, status
 from langchain_chroma import Chroma
 from langchain_together.embeddings import TogetherEmbeddings
-from app.utils.ollama_embed import OllamaEmbedding
-import chromadb
 from sqlalchemy.orm import Session
-from app.models.database import SessionLocal
+from app.models.database import SessionLocal, chroma_manager, Base
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-def get_embedding_function():
-    """Create and return an embedding function instance."""
-    return TogetherEmbeddings(
-        api_key=settings.togetherai_api_key,
-        model=settings.embedding_model,
-    )
-    
+logger = getLogger(__name__)
 
-def get_vector_store(agent_id: str):
-    """Create and return a Chroma vector store instance for a specific agent."""
-    try:
-        agent = agents.get(agent_id)
-        if not agent:
-            raise ValueError("Agent not found")
-        
-        embedding_function = get_embedding_function()
-        client = chromadb.PersistentClient(path=agent.knowledge_base_path)
-        return Chroma(
-            client=client,
-            collection_name=settings.chroma_collection_name,
-            embedding_function=embedding_function
-        )
-    except Exception as e:
-        Logger.error(f"Failed to initialize vector store for agent {agent_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to initialize vector store"
-        )
+# Create PostgreSQL engine
+engine = create_engine(
+    settings.database_url,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_pre_ping=True
+)
 
-def get_indexing_service(vector_store: Chroma = Depends(get_vector_store)):
-    return IndexingService(vector_store)
-
-def get_retrieval_service(vector_store: Chroma = Depends(get_vector_store)):
-    return RetrievalService(vector_store)
+# Create session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
+    """Get database session"""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+# Cache the embedding function to avoid recreating it for each request
+_embedding_function = None
+
+def get_embedding_function():
+    """Create and return a cached embedding function instance."""
+    global _embedding_function
+    if _embedding_function is None:
+        _embedding_function = TogetherEmbeddings(
+            api_key=settings.togetherai_api_key,
+            model=settings.embedding_model,
+        )
+    return _embedding_function
+
+def get_indexing_service(
+    agent_id: str,
+    db: Session = Depends(get_db)
+) -> IndexingService:
+    """Get agent-specific indexing service."""
+    return IndexingService(agent_id=agent_id, db=db)
+
+def get_retrieval_service(
+    agent_id: str,
+    db: Session = Depends(get_db)
+) -> RetrievalService:
+    """Get agent-specific retrieval service."""
+    return RetrievalService(agent_id=agent_id, db=db)

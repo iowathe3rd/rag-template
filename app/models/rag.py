@@ -18,7 +18,6 @@ class RAGChainManager:
         self, 
         vector_store: Chroma,
         model_name: str,
-        api_key: str,
         retrieval_config: Dict[str, Any]
     ):
         """

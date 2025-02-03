@@ -5,7 +5,6 @@ from sqlalchemy.sql import func
 import uuid
 from chromadb import Collection, PersistentClient
 from app.config import settings
-from typing import Optional
 
 Base = declarative_base()
 
@@ -15,9 +14,6 @@ class Agent(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     description = Column(Text)
-    llm_config = Column(JSON, nullable=False)
-    rag_config = Column(JSON, nullable=False)
-    chroma_collection_name = Column(String(255), unique=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

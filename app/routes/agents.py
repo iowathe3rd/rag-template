@@ -33,8 +33,6 @@ async def create_agent(agent: Agent, db: Session = Depends(get_db)):
         db_agent = DBAgent(
             name=agent.name,
             description=agent.description,
-            llm_config=agent.llm_config,
-            rag_config=agent.rag_config
         )
         db.add(db_agent)
         db.commit()

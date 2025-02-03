@@ -48,7 +48,6 @@ async def ask_question(
 async def ingest_url(
     agent_id: str,
     url: str = Form(...),
-    indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """
     Ingest content from a URL into an agent's knowledge base.
@@ -64,11 +63,13 @@ async def ingest_url(
     Raises:
         HTTPException: If URL ingestion fails
     """
+    indexing_service: IndexingService = get_indexing_service(agent_id)
+
     try:
         metadata = await indexing_service.index_content(
             source=url,
             source_type="web",
-            metadata={"source_type": "url", "url": url, "agent_id": agent_id}
+            metadata={"source_type": "url", "url": url}
         )
         return IngestResponse(
             success=True,
@@ -87,7 +88,6 @@ async def ingest_url(
 async def ingest_pdf(
     agent_id: str,
     file: UploadFile = File(...),
-    indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """
     Ingest a PDF document into an agent's knowledge base.
@@ -113,7 +113,9 @@ async def ingest_pdf(
     # Setup temporary file path    
     temp_dir = settings.temp_file_path
     file_path = os.path.join(temp_dir, file.filename)
-    
+
+    indexing_service: IndexingService = get_indexing_service(agent_id)
+
     try:
         # Ensure temp directory exists and save file
         os.makedirs(temp_dir, exist_ok=True)
@@ -128,7 +130,6 @@ async def ingest_pdf(
             metadata={
                 "source_type": "pdf",
                 "filename": file.filename,
-                "agent_id": agent_id
             }
         )
         return IngestResponse(
@@ -153,7 +154,6 @@ async def ingest_text(
     agent_id: str,
     text: str = Form(...),
     title: str = Form(...),
-    indexing_service: IndexingService = Depends(get_indexing_service),
 ):
     """
     Ingest raw text content into an agent's knowledge base.
@@ -170,6 +170,9 @@ async def ingest_text(
     Raises:
         HTTPException: If text ingestion fails
     """
+
+    indexing_service: IndexingService = get_indexing_service(agent_id),
+
     try:
         metadata = await indexing_service.index_content(
             source=text,
@@ -178,7 +181,6 @@ async def ingest_text(
                 "source_type": "text",
                 "title": title,
                 "source": f"text-{title}",
-                "agent_id": agent_id
             }
         )
         return IngestResponse(

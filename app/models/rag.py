@@ -75,12 +75,28 @@ class RAGChainManager:
 
     def _calculate_confidence(self, answer: str, sources: List[str]) -> float:
         """Calculate confidence score for the generated answer."""
-        # Implement confidence calculation logic
-        # This could be based on:
-        # - Semantic similarity between answer and sources
-        # - Number of relevant sources found
-        # - LLM's reported confidence
-        return 0.85  # Placeholder implementation
+        if not sources:
+            return 0.0  # No sources, low confidence
+
+        # Simple heuristic: more sources = higher confidence
+        # You can add more sophisticated logic here, like semantic similarity
+        # between the answer and the sources, or using LLM's confidence if available
+        
+        num_sources = len(sources)
+        max_sources = settings.similarity_top_k # Assuming max sources is the k value
+        
+        # Normalize the number of sources to a 0-1 range
+        source_confidence = min(1.0, num_sources / max_sources)
+        
+        # Placeholder for more advanced confidence calculation
+        # For example, you could use an embedding model to compare the answer
+        # to the sources and calculate a similarity score.
+        
+        # Combine source confidence with a base confidence
+        base_confidence = 0.5 # You can adjust this
+        confidence = base_confidence + (source_confidence * (1 - base_confidence))
+        
+        return confidence
 
     def _get_metadata(self) -> Dict[str, Any]:
         """Get metadata about the RAG operation."""

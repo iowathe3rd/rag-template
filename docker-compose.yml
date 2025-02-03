@@ -10,30 +10,53 @@ services:
     volumes:
       - ./app:/app/app:ro
       - chroma_data:/app/data/chroma_db
-      - temp_data:/app/data/temp
     environment:
-      - OLLAMA_HOST=host.docker.internal
-      - OLLAMA_PORT=11434
-      - CHROMA_DB_PATH=/app/data/chroma_db
-      - MODEL_NAME=ollama/deepseek-r1:1.5b
-      - EMBEDDING_MODEL=snowflake-arctic-embed:33m
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rag_db
+      - CHROMA_SERVER_HOST=chroma
+      - CHROMA_SERVER_PORT=8001
+    depends_on:
+      - postgres
+      - chroma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - rag-network
     restart: unless-stopped
 
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rag_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8001:8001"
+    environment:
+      - CHROMA_SERVER_AUTH_CREDENTIALS=admin:admin
+      - CHROMA_SERVER_AUTH_CREDENTIALS_PROVIDER=chromadb.auth.basic
+      - ALLOW_RESET=true
+
 volumes:
+  postgres_data:
+    name: rag-postgres-data
   chroma_data:
     name: rag-chroma-data
-  temp_data:
-    name: rag-temp-data
-
-networks:
-  rag-network:
-    driver: bridge

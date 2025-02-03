@@ -1,6 +1,4 @@
-import chromadb
 from pydantic_settings import BaseSettings
-import chromadb.utils.embedding_functions as embedding_functions
 from typing import Optional, List
 
 class Settings(BaseSettings):
@@ -42,10 +40,35 @@ class Settings(BaseSettings):
     max_tokens: int = 512
     temperature: float = 0.7
     top_p: float = 1.0
+    
+    # Vector store cache settings
+    VECTOR_STORE_CACHE_SIZE: int = 100  # Maximum number of cached vector stores
+    EMBEDDING_CACHE_TTL: int = 3600  # Time to live for cached embeddings in seconds
+    
+    # Database connection settings
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    
+    # ChromaDB settings
+    chroma_host: str = "chroma"
+    chroma_port: int = 8001
+    chroma_auth_credentials: str = "admin:admin"
+    
+    # PostgreSQL settings
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_user: str = "postgres"
+    postgres_password: str = "postgres"
+    postgres_db: str = "rag_db"
 
     @property
     def is_valid_chunk_config(self) -> bool:
         return 0 < self.chunk_overlap < self.chunk_size
+
+    @property
+    def database_url(self) -> str:
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     class Config:
         env_file = ".env"

@@ -9,7 +9,6 @@ python-dotenv
 litellm
 chromadb
 sentence_transformers
-ollama
 python-multipart
 numpy
 beautifulsoup4

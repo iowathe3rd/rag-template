@@ -1,7 +1,36 @@
 from pydantic_settings import BaseSettings
+from pydantic import PostgresDsn, Field
 from typing import Optional, List
 
+class ChromaDBSettings(BaseSettings):
+    host: str = Field(..., env="CHROMA_HOST")
+    port: int = Field(8000, env="CHROMA_PORT")
+    auth_provider: str = Field(..., env="CHROMA_AUTH_PROVIDER")
+    auth_credentials: str = Field(..., env="CHROMA_AUTH_CREDENTIALS")
+    persist_dir: str = Field(..., env="CHROMA_PERSIST_DIR")
+
+class PostgresSettings(BaseSettings):
+    host: str = Field(..., env="POSTGRES_HOST")
+    port: int = Field(5432, env="POSTGRES_PORT")
+    user: str = Field(..., env="POSTGRES_USER")
+    password: str = Field(..., env="POSTGRES_PASSWORD")
+    db: str = Field(..., env="POSTGRES_DB")
+    
+    @property
+    def dsn(self) -> PostgresDsn:
+        return PostgresDsn.build(
+            scheme="postgresql+asyncpg",
+            username=self.user,
+            password=self.password,
+            host=self.host,
+            port=str(self.port),
+            path=self.db,
+        )
+
 class Settings(BaseSettings):
+    postgres: PostgresSettings = PostgresSettings()
+    chroma: ChromaDBSettings = ChromaDBSettings()
+    
     # Model settings
     model_name: str = "together_ai/deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free"
     embedding_model: str = "togethercomputer/m2-bert-80M-8k-retrieval"
@@ -70,7 +99,19 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
+    @property
+    def chroma_client_settings(self) -> dict:
+        return {
+            "chroma_server_host": self.chroma.host,
+            "chroma_server_port": self.chroma.port,
+            "chroma_server_ssl": False,
+            "chroma_client_auth_provider": self.chroma.auth_provider,
+            "chroma_client_auth_credentials": self.chroma.auth_credentials
+        }
+
     class Config:
         env_file = ".env"
+        env_nested_delimiter = "__"
+        case_sensitive = False
 
 settings = Settings()

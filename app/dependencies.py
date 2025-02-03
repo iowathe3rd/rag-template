@@ -1,12 +1,13 @@
 from logging import getLogger
+
+import chromadb
 from app.services.indexing import IndexingService
 from app.services.retrieval import RetrievalService
 from app.config import settings
-from fastapi import Depends, HTTPException, status
-from langchain_chroma import Chroma
+from fastapi import Depends
 from langchain_together.embeddings import TogetherEmbeddings
 from sqlalchemy.orm import Session
-from app.models.database import SessionLocal, chroma_manager, Base
+from app.models.database import SessionLocal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -59,3 +60,19 @@ def get_retrieval_service(
 ) -> RetrievalService:
     """Get agent-specific retrieval service."""
     return RetrievalService(agent_id=agent_id, db=db)
+
+_chroma_client = None
+
+def get_chroma_client():
+    """Create and return a cached Chroma client instance."""
+    global _chroma_client
+    if _chroma_client is None:
+        _chroma_client = chromadb.HttpClient(
+            host=settings.chroma.host,
+            port=settings.chroma.port,
+            settings=chromadb.Settings(
+                chroma_client_auth_provider=settings.chroma.auth_provider,
+                chroma_client_auth_credentials=settings.chroma.auth_credentials,
+            )
+        )
+    return _chroma_client

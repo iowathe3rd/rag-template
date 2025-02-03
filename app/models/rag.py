@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from fastapi import logger
 from langchain import hub
 from langchain_chroma import Chroma
@@ -17,8 +17,6 @@ class RAGChainManager:
     def __init__(
         self, 
         vector_store: Chroma,
-        model_name: str,
-        retrieval_config: Dict[str, Any]
     ):
         """
         Initialize RAG chain manager.
@@ -26,11 +24,9 @@ class RAGChainManager:
         Args:
             vector_store: Chroma vector store instance
             model_name: Name of the LLM model to use
-            retrieval_config: Configuration for retrieval operations
         """
         self.vector_store = vector_store
-        self.model_name = model_name
-        self.retrieval_config = retrieval_config
+        self.model_name = settings.model_name
         self.retriever = self._setup_retriever()
         self.llm = self._setup_llm()
         self.prompt = hub.pull("rlm/rag-prompt")
@@ -50,10 +46,10 @@ class RAGChainManager:
         """Initialize the retriever with search configuration."""
         return self.vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs=self.retrieval_config.get("search_kwargs", {
+            search_kwargs={
                 "k": settings.similarity_top_k,
                 "score_threshold": settings.similarity_score_threshold
-            })
+            }
         )
 
     def _setup_chain(self):
@@ -102,7 +98,10 @@ class RAGChainManager:
         """Get metadata about the RAG operation."""
         return {
             "model": self.model_name,
-            "retrieval_config": self.retrieval_config,
+            "retrieval_config": {
+                "k": settings.similarity_top_k,
+                "score_threshold": settings.similarity_score_threshold
+            },
             "timestamp": datetime.utcnow().isoformat()
         }
 

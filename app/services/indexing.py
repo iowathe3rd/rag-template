@@ -1,17 +1,21 @@
 import hashlib
 import logging
 from dataclasses import dataclass
-from typing import List, Dict, Any, Union, AsyncIterator
-from pathlib import Path
+from typing import Dict, Any, Union, Optional
 
 from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
 from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.config import settings
-from app.utils.ollama_embed import OllamaEmbedding
+from app.dependencies import get_embedding_function
 from app.utils.text_loader import RawTextLoader
+from app.models.database import Agent, DocumentChunk
+from sqlalchemy.orm import Session
+
+from app.services.base import BaseAgentService
+from app.services.document.processor import DocumentProcessor
+from app.services.document.loader import DocumentLoader
+from app.services.document.factory import LoaderFactory
 
 logger = logging.getLogger(__name__)
 
@@ -20,69 +24,29 @@ LoaderType = Union[WebBaseLoader, PyPDFLoader, RawTextLoader]
 @dataclass
 class DocumentMetadata:
     document_hash: str
+    chunk_count: int
+    source_type: str
     additional_metadata: Dict[str, Any]
 
-class DocumentProcessor:
-    """Handles document loading and validation operations."""
-    
-    @staticmethod
-    async def load_documents(loader: LoaderType) -> List[Document]:
-        """Load documents based on loader type."""
-        if isinstance(loader, PyPDFLoader):
-            return [doc async for doc in loader.alazy_load()]
-        if isinstance(loader, RawTextLoader):
-            return loader.load()
-        return loader.load()
+class IndexingService(BaseAgentService):
+    """Service for indexing documents into agent-specific vector store."""
 
-    @staticmethod
-    def validate_documents(documents: List[Document]) -> None:
-        """Validate document structure and content."""
-        if not documents:
-            raise ValueError("No documents were loaded from the source")
-        
-        for doc in documents:
-            if not isinstance(doc, Document):
-                raise TypeError(f"Invalid document type: {type(doc)}")
-            if not doc.page_content:
-                logger.warning("Document found with empty content")
-
-class LoaderFactory:
-    """Factory for creating document loaders."""
-    
-    @staticmethod
-    def create_loader(source: str, source_type: str) -> LoaderType:
-        """Create appropriate loader based on source type."""
-        loaders = {
-            "web": lambda s: WebBaseLoader(s),
-            "pdf": lambda s: PyPDFLoader(s, extract_images=False),
-            "text": lambda s: RawTextLoader(s)
-        }
-        
-        if source_type not in loaders:
-            raise ValueError(f"Unsupported source type: {source_type}")
-        
-        return loaders[source_type](source)
-
-class IndexingService:
-    """Service for indexing documents into vector store."""
-
-    def __init__(self, vector_store: Chroma):
-        if not settings.is_valid_chunk_config:
-            raise ValueError("Invalid chunk configuration")
-            
-        self.vector_store = vector_store
-        self.text_splitter = self._create_text_splitter()
+    def __init__(self, agent_id: str, db: Session):
+        super().__init__(agent_id, db)
         self.document_processor = DocumentProcessor()
-        self.loader_factory = LoaderFactory()
+        self.document_loader = DocumentLoader()
+        self.vector_store = self._get_agent_vector_store()
 
-    @staticmethod
-    def _create_text_splitter() -> RecursiveCharacterTextSplitter:
-        """Create text splitter with configured settings."""
-        return RecursiveCharacterTextSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-            length_function=len,
-            is_separator_regex=False
+    def _get_agent_vector_store(self) -> Chroma:
+        """Get or create agent-specific vector store."""
+        agent = self.db.query(Agent).filter(Agent.id == self.agent_id).first()
+        if not agent:
+            raise ValueError(f"Agent {self.agent_id} not found")
+
+        # Create or get agent-specific Chroma collection
+        return Chroma(
+            collection_name=agent.chroma_collection_name,
+            embedding_function=get_embedding_function(),
         )
 
     @staticmethod
@@ -90,38 +54,60 @@ class IndexingService:
         """Compute SHA-256 hash of the source."""
         return hashlib.sha256(source.encode()).hexdigest()
 
-    def _prepare_document_metadata(self, source: str, metadata: Dict[str, Any] = None) -> DocumentMetadata:
-        """Prepare metadata for documents."""
-        return DocumentMetadata(
-            document_hash=self._compute_document_hash(source),
-            additional_metadata=metadata or {}
-        )
-
-    async def index_content(self, source: str, source_type: str = "web", metadata: Dict[str, Any] = None) -> bool:
-        """Index content from various sources into the vector store."""
+    async def index_content(
+        self,
+        source: str,
+        source_type: str = "web",
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> DocumentMetadata:
+        """Index content from various sources."""
         try:
-            doc_metadata = self._prepare_document_metadata(source, metadata)
-            loader = self.loader_factory.create_loader(source, source_type)
+            metadata = metadata or {}
+            metadata["agent_id"] = self.agent_id
+            metadata["document_hash"] = self._compute_document_hash(source)
             
-            # Load and process documents
-            documents = await self.document_processor.load_documents(loader)
-            self.document_processor.validate_documents(documents)
+            documents = await self._load_and_process_documents(source, source_type)
+            await self._store_documents(documents, metadata)
             
-            # Handle web content specifically
-            if source_type == "web":
-                documents = [Document(page_content=str(item)) for item in documents]
-            
-            # Split and update metadata
-            splits = self.text_splitter.split_documents(documents)
-            for split in splits:
-                split.metadata.update({
-                    "document_hash": doc_metadata.document_hash,
-                    **doc_metadata.additional_metadata
-                })
-
-            self.vector_store.add_documents(splits)
-            return True
-            
+            return DocumentMetadata(
+                document_hash=metadata["document_hash"],
+                chunk_count=len(documents),
+                source_type=source_type,
+                additional_metadata=metadata
+            )
         except Exception as e:
             logger.error(f"Indexing failed: {str(e)}")
+            raise
+
+    async def _load_and_process_documents(self, source: str, source_type: str):
+        """Load and process documents."""
+        loader = LoaderFactory.create_loader(source, source_type)
+        documents = await self.document_loader.load_documents(loader)
+        self.document_loader.validate_documents(documents)
+        
+        return await self.document_processor.process_documents(
+            documents,
+            {"source": source, "source_type": source_type}
+        )
+
+    async def _store_documents(self, documents, metadata):
+        """Store documents in vector store and database."""
+        try:
+            self.vector_store.add_documents(documents)
+            
+            for doc in documents:
+                chunk = DocumentChunk(
+                    agent_id=self.agent_id,
+                    content=doc.page_content,
+                    vector=doc.embedding,
+                    metadata=metadata,
+                    document_hash=metadata["document_hash"]
+                )
+                self.db.add(chunk)
+            
+            self.db.commit()
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Storage failed: {str(e)}")
             raise

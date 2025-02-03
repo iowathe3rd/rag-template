@@ -3,8 +3,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import uuid
-from chromadb import Collection, PersistentClient
+from chromadb import Client, Collection, HttpClient, PersistentClient
 from app.config import settings
+from app.dependencies import get_chroma_client
 
 Base = declarative_base()
 
@@ -57,15 +58,8 @@ class ChatMessage(Base):
 
 class ChromaManager:
     def __init__(self):
-        self.client = PersistentClient(
-            host=settings.chroma_host,
-            port=settings.chroma_port,
-            settings={
-                "chroma_client_auth_provider": "chromadb.auth.basic",
-                "chroma_client_auth_credentials": settings.chroma_auth_credentials
-            }
-        )
-
+        self.client = get_chroma_client()
+        
     def get_or_create_collection(self, name: str) -> Collection:
         return self.client.get_or_create_collection(
             name=name,

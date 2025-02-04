@@ -98,3 +98,14 @@ services:
       - "55681:55681" # Legacy
     networks:
       - rag-network
+  pgadmin:
+    image: dpage/pgadmin4
+    ports:
+      - "5050:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=user@domain.com
+      - PGADMIN_DEFAULT_PASSWORD=SuperSecret
+      - PGADMIN_LISTEN_ADDRESS=0.0.0.0
+    networks:
+      - rag-network
+    restart: unless-stopped

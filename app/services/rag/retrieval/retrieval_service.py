@@ -1,28 +1,11 @@
-from app.dependencies import get_embedding_function
-from app.services.base import BaseAgentService
-from app.models.chat import ChatManager
-from app.models.rag import RAGChainManager
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from sqlalchemy.orm import Session
-from langchain.vectorstores import Chroma
-from langchain.vectorstores.base import VectorStore
-from app.models.database import chroma_manager
+from app.services.rag.base import BaseAgentService
+from app.services.chat.manager import ChatManager
+from app.services.rag.chain import RAGChainManager
+from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.retrieveal import RetrievalResponse
+from app.schemas.chat import ChatMessage as ChatMessageSchema
 
-@dataclass
-class RetrievalResponse:
-    """Container for RAG system response components.
-    
-    Attributes:
-        answer: Generated answer text
-        sources: Source documents used for generation
-        metadata: System metadata about the retrieval
-        confidence_score: Confidence metric (0-1)
-    """
-    answer: str
-    sources: List[str]
-    metadata: Dict[str, Any]
-    confidence_score: float
 
 class RetrievalService(BaseAgentService):
     """Orchestrates question answering using RAG pattern.
@@ -33,7 +16,7 @@ class RetrievalService(BaseAgentService):
     3. Conversation history management
     """
 
-    def __init__(self, agent_id: str, db: Session):
+    def __init__(self, agent_id: str, db: AsyncSession):
         """
         Args:
             agent_id: UUID of the agent to query
@@ -89,10 +72,13 @@ class RetrievalService(BaseAgentService):
         )
         return f"{chat_history}\n{question}"
 
-    def _init_vector_store(self) -> VectorStore:
-        """Инициализация хранилища векторов для конкретного агента"""
-        return Chroma(
-            client=chroma_manager.client,
-            collection_name=str(self.agent_id),  # Используем UUID агента
-            embedding_function=get_embedding_function(),
+    async def _save_interaction(self, chat_id: str, question: str, response: RetrievalResponse):
+        """Persist interaction to chat history"""
+        await self.chat_manager.add_message_to_chat(
+            chat_id,
+            ChatMessageSchema(role="user", content=question)
         )
+        await self.chat_manager.add_message_to_chat(
+            chat_id,
+            ChatMessageSchema(role="assistant", content=response.answer)
+        ) 

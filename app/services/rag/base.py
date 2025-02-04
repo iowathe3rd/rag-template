@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from langchain_chroma import Chroma
 from app.models.database import Agent, chroma_manager
-from app.dependencies import get_embedding_function
+from async_property import async_property
 
 class BaseAgentService(ABC):
     """
@@ -27,13 +27,13 @@ class BaseAgentService(ABC):
             self._agent = self._get_agent()
         return self._agent
 
-    @property
-    def vector_store(self) -> Chroma:
+    @async_property
+    async def vector_store(self) -> Chroma:
         """
         Get the vector store.
         """
         if not self._vector_store:
-            self._vector_store = self._initialize_vector_store()
+            self._vector_store = await self.initialize_vector_store()
         return self._vector_store
 
     def _get_agent(self) -> Agent:
@@ -45,12 +45,12 @@ class BaseAgentService(ABC):
             raise ValueError(f"Agent {self.agent_id} not found")
         return agent
 
-    def _initialize_vector_store(self) -> Chroma:
-        """
-        Initialize the vector store.
-        """
-        collection = chroma_manager.get_or_create_collection(
-            name=str(self.agent_id),  # Используем UUID агента как название
+    async def initialize_vector_store(self) -> Chroma:
+        """Initialize vector store with async support"""
+        from app.dependencies import get_embedding_function
+        
+        collection = await chroma_manager.get_or_create_collection(
+            name=str(self.agent_id),
             metadata={"hnsw:space": "cosine"}
         )
         return Chroma(

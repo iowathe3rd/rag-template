@@ -7,9 +7,8 @@ from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.vectorstores import VectorStoreRetriever
 from litellm import LiteLLM
-
-from app.services.retrieval import RetrievalResponse
-from app.config import settings
+from app.core.config import settings
+from app.schemas.retrieveal import RetrievalResponse
 
 class RAGChainManager:
     """Manages RAG (Retrieval Augmented Generation) chain operations."""

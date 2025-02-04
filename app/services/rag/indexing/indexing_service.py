@@ -4,15 +4,11 @@ from dataclasses import dataclass
 from typing import Dict, Any, Union, Optional
 
 from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
-from langchain_chroma import Chroma
 
-from app.config import settings
-from app.dependencies import get_embedding_function
 from app.utils.text_loader import RawTextLoader
-from app.models.database import Agent
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.base import BaseAgentService
+from app.services.rag.base import BaseAgentService
 from app.services.document.processor import DocumentProcessor
 from app.services.document.loader import DocumentLoader
 from app.services.document.factory import LoaderFactory
@@ -46,7 +42,7 @@ class IndexingService(BaseAgentService):
     Uses strategy pattern for different document types via LoaderFactory.
     """
 
-    def __init__(self, agent_id: str, db: Session):
+    def __init__(self, agent_id: str, db: AsyncSession):
         """
         Args:
             agent_id: UUID of the agent owning the documents
@@ -55,7 +51,6 @@ class IndexingService(BaseAgentService):
         super().__init__(agent_id, db)
         self.document_processor = DocumentProcessor()
         self.document_loader = DocumentLoader()
-        self.vector_store = self._initialize_vector_store()
     
     @staticmethod
     def _compute_document_hash(source: str) -> str:
@@ -149,8 +144,9 @@ class IndexingService(BaseAgentService):
         """
         try:
             # Vector store insertion
-            self.vector_store.add_documents(documents)
+            vector_store = await self.vector_store
+            await vector_store.add_documents(documents)
             
         except Exception as e:
             logger.error(f"Storage failed: {str(e)}")
-            raise
+            raise 

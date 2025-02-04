@@ -1,11 +1,12 @@
 from sqlalchemy import Column, String, JSON, DateTime, ForeignKey, Text, Index
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
-from chromadb import Client, Collection, HttpClient, PersistentClient
-from app.config import settings
-from app.dependencies import get_chroma_client
+from chromadb import Collection, HttpClient
+from sqlalchemy.ext.declarative import declarative_base
+
+from app.core.config import settings
 
 Base = declarative_base()
 
@@ -30,7 +31,7 @@ class Chat(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id = Column(UUID(as_uuid=True), ForeignKey('agents.id'), nullable=False)
     title = Column(String(255), nullable=False)
-    metadata = Column(JSON, default={})
+    chat_metadata = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -46,7 +47,7 @@ class ChatMessage(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     chat_id = Column(UUID(as_uuid=True), ForeignKey('chats.id'), nullable=False)
-    role = Column(String(50), nullable=False)
+    role = Column(Text, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -56,17 +57,25 @@ class ChatMessage(Base):
         Index('idx_message_chat_id', chat_id),
     )
 
+_chroma_client = None
+
 class ChromaManager:
     def __init__(self):
-        self.client = get_chroma_client()
+        global _chroma_client
+        if _chroma_client is None:
+            _chroma_client = HttpClient(
+                host=settings.chroma.host,
+                port=settings.chroma.port,
+            )
+            self.client = _chroma_client
         
-    def get_or_create_collection(self, name: str) -> Collection:
-        return self.client.get_or_create_collection(
+    async def get_or_create_collection(self, name: str) -> Collection:
+        return await self.client.get_or_create_collection(
             name=name,
             metadata={"hnsw:space": "cosine"}
         )
 
-    def delete_collection(self, name: str) -> None:
-        self.client.delete_collection(name=name)
+    async def delete_collection(self, name: str) -> None:
+        await self.client.delete_collection(name=name)
 
 chroma_manager = ChromaManager() 

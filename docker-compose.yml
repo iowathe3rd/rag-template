@@ -21,6 +21,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - rag-network
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -31,22 +33,26 @@ services:
   # ChromaDB Vector Store
   chroma:
     image: chromadb/chroma
-    env_file: .env
     environment:
-      - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMA_AUTH_PROVIDER}
-      - CHROMA_SERVER_AUTHN_CREDENTIALS=${CHROMA_AUTH_CREDENTIALS}
-      - CHROMA_PERSIST_DIR=${CHROMA_PERSIST_DIR}
-      - CHROMA_OTEL_COLLECTION_ENDPOINT=http://otel-collector:4317
+      - IS_PERSISTENT=TRUE
+      # - CHROMA_SERVER_AUTHN_PROVIDER=${CHROMA_AUTH_PROVIDER}
+      # - CHROMA_SERVER_AUTHN_CREDENTIALS=${CHROMA_AUTH_CREDENTIALS}
+      # - CHROMA_AUTH_TOKEN_TRANSPORT_HEADER=${CHROMA_AUTH_HEADER}
+      - CHROMA_OTEL_COLLECTION_ENDPOINT=http://otel-collector:4317/
+      - CHROMA_OTEL_EXPORTER_HEADERS=${CHROMA_OTEL_EXPORTER_HEADERS:-{}}
+      - CHROMA_OTEL_SERVICE_NAME=${CHROMA_OTEL_SERVICE_NAME:-chroma}
+      - CHROMA_OTEL_GRANULARITY=${CHROMA_OTEL_GRANULARITY:-all}
     volumes:
-      - chroma_data:${CHROMA_PERSIST_DIR}
+      - chroma_data:/chroma_data
     ports:
-      - "${CHROMA_PORT}:8000"
+      - "${CHROMA_PORT}:${CHROMA_PORT}"
     networks:
       - rag-network
     depends_on:
-      - postgres
+      - otel-collector
+      - zipkin
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://localhost:${CHROMA_PORT}/api/v1/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -58,15 +64,6 @@ services:
       context: .
       dockerfile: Dockerfile
     env_file: .env
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - CHROMA_HOST=${CHROMA_HOST}
-      - CHROMA_PORT=${CHROMA_PORT}
-      - CHROMA_AUTH_CREDENTIALS=${CHROMA_AUTH_CREDENTIALS}
     ports:
       - "8000:8000"
     volumes:
@@ -81,20 +78,23 @@ services:
     restart: unless-stopped
 
   # Observability Stack
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.111.0
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-    networks:
-      - rag-network
-
   zipkin:
     image: openzipkin/zipkin
     ports:
       - "9411:9411"
+    depends_on:
+      - otel-collector
+    networks:
+      - rag-network
+      
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ${PWD}/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"  # OTLP
+      - "4318:4318"
+      - "55681:55681" # Legacy
     networks:
       - rag-network

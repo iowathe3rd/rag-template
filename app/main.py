@@ -4,6 +4,7 @@ from app.routes import rag, agents
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="RAG Assistant API")
 
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,

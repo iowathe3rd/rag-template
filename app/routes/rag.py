@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
-from app.models.schemas import QuestionRequest, AnswerResponse, IngestResponse
+from app.schemas.api import QuestionRequest, AnswerResponse, IngestResponse
 from app.dependencies import get_retrieval_service, get_indexing_service
-from app.services.retrieval import RetrievalService
-from app.services.indexing import IndexingService
+from app.services.rag.retrieval import RetrievalService
+from app.services.rag.indexing import IndexingService
 import logging
 import os
-from app.config import settings
+from app.core.config import settings
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database.session import get_db
 
 # Initialize router and logger
 router = APIRouter()
@@ -48,6 +50,7 @@ async def ask_question(
 async def ingest_url(
     agent_id: str,
     url: str = Form(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Ingest content from a URL into an agent's knowledge base.
@@ -63,13 +66,14 @@ async def ingest_url(
     Raises:
         HTTPException: If URL ingestion fails
     """
-    indexing_service: IndexingService = get_indexing_service(agent_id)
+    indexing_service: IndexingService = Depends(get_indexing_service(agent_id))
 
     try:
         metadata = await indexing_service.index_content(
             source=url,
             source_type="web",
-            metadata={"source_type": "url", "url": url}
+            metadata={"source_type": "url", "url": url},
+            db=db
         )
         return IngestResponse(
             success=True,
@@ -88,6 +92,7 @@ async def ingest_url(
 async def ingest_pdf(
     agent_id: str,
     file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Ingest a PDF document into an agent's knowledge base.
@@ -114,7 +119,7 @@ async def ingest_pdf(
     temp_dir = settings.temp_file_path
     file_path = os.path.join(temp_dir, file.filename)
 
-    indexing_service: IndexingService = get_indexing_service(agent_id)
+    indexing_service: IndexingService = Depends(get_indexing_service(agent_id))
 
     try:
         # Ensure temp directory exists and save file
@@ -130,7 +135,8 @@ async def ingest_pdf(
             metadata={
                 "source_type": "pdf",
                 "filename": file.filename,
-            }
+            },
+            db=db
         )
         return IngestResponse(
             success=True,
@@ -154,6 +160,7 @@ async def ingest_text(
     agent_id: str,
     text: str = Form(...),
     title: str = Form(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Ingest raw text content into an agent's knowledge base.
@@ -171,7 +178,7 @@ async def ingest_text(
         HTTPException: If text ingestion fails
     """
 
-    indexing_service: IndexingService = get_indexing_service(agent_id),
+    indexing_service: IndexingService = Depends(get_indexing_service(agent_id))
 
     try:
         metadata = await indexing_service.index_content(
@@ -181,7 +188,8 @@ async def ingest_text(
                 "source_type": "text",
                 "title": title,
                 "source": f"text-{title}",
-            }
+            },
+            db=db
         )
         return IngestResponse(
             success=True,

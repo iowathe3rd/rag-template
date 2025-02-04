@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
-from app.models.database import Agent as DBAgent, Chat as DBChat
-from app.models.schemas import Agent, Chat
-from app.dependencies import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database.models import Agent as DBAgent, Chat as DBChat
+from app.schemas.agent import Agent
+from app.schemas.chat import Chat
+from app.database.session import get_db
 import logging
 
 # Initialize router and logger
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Agent Creation Endpoint
 @router.post("/agents", response_model=Agent)
-async def create_agent(agent: Agent, db: Session = Depends(get_db)):
+async def create_agent(agent: Agent, db: AsyncSession = Depends(get_db)):
     """
     Create a new agent with specified configuration.
     
@@ -35,8 +36,8 @@ async def create_agent(agent: Agent, db: Session = Depends(get_db)):
             description=agent.description,
         )
         db.add(db_agent)
-        db.commit()
-        db.refresh(db_agent)
+        await db.commit()
+        await db.refresh(db_agent)
         logger.info(f"Agent created: {db_agent}")
         return db_agent
     except Exception as e:
@@ -45,7 +46,7 @@ async def create_agent(agent: Agent, db: Session = Depends(get_db)):
 
 # Agent Retrieval Endpoint
 @router.get("/agents/{agent_id}", response_model=Agent)
-async def get_agent(agent_id: str, db: Session = Depends(get_db)):
+async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     """
     Retrieve an existing agent's details.
     
@@ -61,22 +62,22 @@ async def get_agent(agent_id: str, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If agent not found (404)
     """
-    db_agent = db.query(DBAgent).filter(DBAgent.id == agent_id).first()
+    db_agent = await db.get(DBAgent, agent_id)
     if not db_agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return db_agent
 
 # Chat Creation Endpoint
 @router.post("/agents/{agent_id}/chats", response_model=Chat)
-async def create_chat(agent_id: str, chat: Chat, db: Session = Depends(get_db)):
+async def create_chat(agent_id: str, chat: Chat, db: AsyncSession = Depends(get_db)):
     """
-    Initialize a new chat session for an agent.
+    Create a new chat session for a specific agent.
     
-    This endpoint creates a new chat context for interactions with a specific agent.
-    Each chat maintains its own conversation history and metadata.
+    This endpoint creates a new chat session associated with a particular agent.
+    It allows for tracking conversations and maintaining context.
     
     Args:
-        agent_id: ID of the agent to chat with
+        agent_id: ID of the agent to associate the chat with
         chat: Chat configuration including title and metadata
         db: Database session for persistence
         
@@ -90,8 +91,8 @@ async def create_chat(agent_id: str, chat: Chat, db: Session = Depends(get_db)):
         # Create new chat session
         db_chat = DBChat(agent_id=agent_id, title=chat.title, metadata=chat.metadata)
         db.add(db_chat)
-        db.commit()
-        db.refresh(db_chat)
+        await db.commit()
+        await db.refresh(db_chat)
         logger.info(f"Chat created: {db_chat}")
         return db_chat
     except Exception as e:
@@ -100,7 +101,7 @@ async def create_chat(agent_id: str, chat: Chat, db: Session = Depends(get_db)):
 
 # Chat Retrieval Endpoint
 @router.get("/agents/{agent_id}/chats/{chat_id}", response_model=Chat)
-async def get_chat(agent_id: str, chat_id: str, db: Session = Depends(get_db)):
+async def get_chat(agent_id: str, chat_id: str, db: AsyncSession = Depends(get_db)):
     """
     Retrieve details of an existing chat session.
     
@@ -117,8 +118,8 @@ async def get_chat(agent_id: str, chat_id: str, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If chat not found (404)
     """
-    db_chat = db.query(DBChat).filter(DBChat.id == chat_id, DBChat.agent_id == agent_id).first()
-    if not db_chat:
+    db_chat = await db.get(DBChat, chat_id)
+    if not db_chat or db_chat.agent_id != agent_id:
         logger.warning(f"Chat not found: agent_id={agent_id}, chat_id={chat_id}")
         raise HTTPException(status_code=404, detail="Chat not found")
     logger.info(f"Chat retrieved: {db_chat}")

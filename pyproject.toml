@@ -1,0 +1,17 @@
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+pydantic = {extras = ["email"], version = "^2.5.3"}
+SQLAlchemy = {extras = ["asyncio"], version = "^2.0.25"}
+asyncpg = "^0.29.0"
+python-dotenv = "^1.0.0"
+langchain = "^0.1.0"
+langchain-community = "^0.0.14"
+langchain-together = "^0.0.4"
+tiktoken = "^0.5.2"
+chromadb = "^0.4.18"
+litellm = "^0.10.1"
+psycopg2 = "^2.9.9"
+async-property = "^0.3.0"
+greenlet = "^3.0.3" 
